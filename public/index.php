@@ -5,6 +5,10 @@ $autoload = __DIR__ . '/../vendor/autoload.php';
 if (file_exists($autoload)) {
     require $autoload;
 }
+// Fallback: allow running without Composer by directly loading the App class
+if (!class_exists(App\App::class)) {
+    require __DIR__ . '/../src/App.php';
+}
 
 // Serve local MP4 via rewritten route when using Apache/.htaccess
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
