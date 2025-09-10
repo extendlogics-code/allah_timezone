@@ -827,6 +827,9 @@ setInterval(renderDates, 60 * 1000);
             'status' => 200,
             'headers' => [
                 'Content-Type' => 'text/html; charset=UTF-8',
+                'X-Content-Type-Options' => 'nosniff',
+                'Referrer-Policy' => 'no-referrer',
+                'X-Frame-Options' => 'SAMEORIGIN',
             ],
             'body' => $body,
         ];

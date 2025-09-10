@@ -11,6 +11,9 @@ use App\Times;
 
 header('Content-Type: application/json; charset=UTF-8');
 header('Cache-Control: no-store');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: no-referrer');
+header('X-Frame-Options: DENY');
 
 $root = dirname(__DIR__);
 $dataDir = $root . '/data';
@@ -31,4 +34,3 @@ $city    = trim($_GET['city'] ?? '');
 
 $payload = Times::load($csvFiles, $date, $country, $state, $city);
 echo json_encode($payload, JSON_UNESCAPED_SLASHES);
-

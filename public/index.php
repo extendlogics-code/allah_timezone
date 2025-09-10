@@ -26,6 +26,9 @@ if ($uri === '/media/azan.mp4') {
         header('Content-Type: video/mp4');
         header('Content-Disposition: inline; filename="azan.mp4"');
         header('Accept-Ranges: bytes');
+        header('X-Content-Type-Options: nosniff');
+        header('Referrer-Policy: no-referrer');
+        header('Cache-Control: no-store');
         readfile($file);
         return;
     }
