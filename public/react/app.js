@@ -64,6 +64,9 @@ function App(){
   const api = useApi({});
   const sel = api.selection || {};
   const [playing, setPlaying] = React.useState(false);
+  const [blocked, setBlocked] = React.useState(false);
+  const [showFS, setShowFS] = React.useState(false);
+  const [showUnmute, setShowUnmute] = React.useState(false);
   const localVidRef = React.useRef(null);
   const [ytReady, setYtReady] = React.useState(false);
   const ytContainerRef = React.useRef(null);
@@ -88,11 +91,36 @@ function App(){
 
   React.useEffect(()=>{ scheduleNext(); return ()=> nextTimer.current && clearTimeout(nextTimer.current); }, [scheduleNext]);
 
-  function ensureYT(){ if (playerRef.current || !ytReady) return; const mount=ytContainerRef.current; mount.innerHTML=''; playerRef.current = new YT.Player(mount, { videoId:'vS0zBleiJuk', host:'https://www.youtube-nocookie.com', playerVars:{autoplay:1, mute:0, controls:0, rel:0, modestbranding:1, playsinline:1, enablejsapi:1, origin:location.origin, loop:0}, events:{ onStateChange:(e)=>{ if (e.data===YT.PlayerState.ENDED){ cleanup(); scheduleNext(); } } } }); }
-  async function playLocal(){ const v=localVidRef.current; v.src='/media/azan.mp4'; v.style.display='block'; try{ v.muted=false; await v.play(); }catch(e){ try{ v.muted=true; await v.play(); }catch(e2){} } }
-  function cleanup(){ try{ const v=localVidRef.current; v.pause(); v.currentTime=0; v.style.display='none'; }catch(e){} try{ playerRef.current && playerRef.current.stopVideo && playerRef.current.stopVideo(); }catch(e){} setPlaying(false); }
-  async function playNow(label){ setPlaying(true); setStatus(`${label?label+' · ':''}Playing video fullscreen.`); try{ const el=document.getElementById('videoWrap'); if (el.requestFullscreen) await el.requestFullscreen(); }catch(e){}
-    try{ await playLocal(); }catch(e){ ensureYT(); }
+  function ensureYT(){
+    if (playerRef.current || !ytReady) return;
+    const mount=ytContainerRef.current; mount.innerHTML='';
+    playerRef.current = new YT.Player(mount, {
+      videoId:'vS0zBleiJuk', host:'https://www.youtube-nocookie.com',
+      playerVars:{autoplay:1, mute:0, controls:0, rel:0, modestbranding:1, playsinline:1, enablejsapi:1, origin:location.origin, loop:0},
+      events:{ onStateChange:(e)=>{
+        if (e.data===YT.PlayerState.PLAYING){ setBlocked(false); setShowUnmute(false); try{ playerRef.current.unMute(); }catch(_){} }
+        if (e.data===YT.PlayerState.ENDED){ cleanup(); scheduleNext(); }
+      }}
+    });
+  }
+  async function playLocal(){
+    const v=localVidRef.current; v.src='/media/azan.mp4'; v.style.display='block';
+    try{ v.muted=false; await v.play(); setBlocked(false); }
+    catch(e){ try{ v.muted=true; await v.play(); setBlocked(true); }catch(e2){ setBlocked(true); throw e2; } }
+  }
+  function cleanup(){
+    try{ const v=localVidRef.current; v.pause(); v.currentTime=0; v.style.display='none'; }catch(e){}
+    try{ playerRef.current && playerRef.current.stopVideo && playerRef.current.stopVideo(); }catch(e){}
+    setPlaying(false); setBlocked(false); setShowUnmute(false); setShowFS(false);
+    if (document.fullscreenElement && document.exitFullscreen){ try{ document.exitFullscreen(); }catch(_){} }
+  }
+  async function playNow(label){
+    setPlaying(true);
+    setStatus(`${label?label+' · ':''}Playing video fullscreen.`);
+    try{ const el=document.getElementById('videoWrap'); if (el.requestFullscreen) await el.requestFullscreen(); else setShowFS(true); }
+    catch(e){ setShowFS(true); }
+    try{ await playLocal(); }
+    catch(e){ ensureYT(); }
     setTimeout(()=>{ cleanup(); scheduleNext(); }, 3*60*1000); // fallback
   }
 
@@ -147,9 +175,19 @@ function App(){
           <ClockCanvas schedule={{times:schedule.times, names:schedule.names}} />
           <div id="nowText" className="time-readout">{nowText}</div>
           <div className="status">{status || (schedule.times.length? 'Waiting for next prayer time to autoplay…':'Couldn’t find times for your selection in the CSVs.')}</div>
-          <div id="videoWrap" style={{display:playing?'block':'none'}}>
+          <div id="videoWrap" style={{display:playing?'block':'none', position:'relative'}}>
             <div id="ytContainer" ref={ytContainerRef}></div>
             <video id="localVid" ref={localVidRef} preload="auto" playsInline webkit-playsinline="true"></video>
+            <button id="unmuteBtn" className="chip" style={{display:showUnmute?'inline-block':'none', position:'absolute', top:12, right:12}} onClick={()=>{ try{ const v=localVidRef.current; if (!v.paused){ v.muted=false; setShowUnmute(false); return; } }catch(e){} try{ playerRef.current && playerRef.current.unMute && playerRef.current.unMute(); setShowUnmute(false); }catch(e){} }}>🔊 Unmute</button>
+            <div className="overlay" id="overlayBlocked" style={{display:blocked?'flex':'none'}}>
+              <div>
+                <p>Autoplay was blocked. Tap to start with sound.</p>
+                <button className="chip" onClick={async ()=>{ setBlocked(false); try{ const v=localVidRef.current; v.muted=false; await v.play(); }catch(e){ try{ playerRef.current && playerRef.current.playVideo && playerRef.current.playVideo(); playerRef.current && playerRef.current.unMute && playerRef.current.unMute(); }catch(_){/* ignore */} } }}>Play Video</button>
+              </div>
+            </div>
+            <div className="overlay" id="overlayFS" style={{display:showFS?'flex':'none', right:12, bottom:12, position:'absolute'}}>
+              <button className="chip" onClick={async ()=>{ try{ const el=document.getElementById('videoWrap'); if (el.requestFullscreen){ await el.requestFullscreen(); setShowFS(false);} }catch(_){/* ignore */} }}>⛶ Go Fullscreen</button>
+            </div>
           </div>
         </div>
       </div>
@@ -158,4 +196,3 @@ function App(){
 }
 
 createRoot(document.getElementById('root')).render(<App />)
-
