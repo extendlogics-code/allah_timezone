@@ -5,6 +5,10 @@ $autoload = __DIR__ . '/../vendor/autoload.php';
 if (file_exists($autoload)) {
     require $autoload;
 }
+// Fallback: allow running without Composer by directly loading the App class
+if (!class_exists(App\App::class)) {
+    require __DIR__ . '/../src/App.php';
+}
 
 // Serve local MP4 via rewritten route when using Apache/.htaccess
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
@@ -27,6 +31,12 @@ if ($uri === '/media/azan.mp4') {
     }
     http_response_code(404);
     echo 'Azan MP4 not found';
+    return;
+}
+
+// Basic API route for React without router.php (Apache/.htaccess)
+if (strpos($uri, '/api/times') === 0) {
+    require __DIR__ . '/api.php';
     return;
 }
 
