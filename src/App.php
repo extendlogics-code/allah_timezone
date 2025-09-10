@@ -46,10 +46,12 @@ final class App
                 'clock' => 'Allah_4K_Green.jpg',
                 'allah' => 'assets/allah.png'
             ],
-            // CSVs to merge
+            // CSVs to merge (data/ first, then repo root fallbacks)
             'csv_files' => [
                 $dataDir . '/india_prayer_times_2025.csv',
                 $dataDir . '/uae_prayer_times_2025.csv',
+                $root    . '/india_prayer_times_2025.csv',
+                $root    . '/uae_prayer_times_2025.csv',
             ],
             // Local MP4 Azan path (served from public root)
             'local_video' => $publicDir . '/AzanSong.mp4',
@@ -87,7 +89,7 @@ final class App
             if (!is_readable($csvPath)) continue;
             if (($fh=fopen($csvPath,'r'))===false) continue;
 
-            $header = fgetcsv($fh);
+            $header = fgetcsv($fh, 0, ',', '"', '\\');
             if ($header === false) { fclose($fh); continue; }
             $header = array_map(__NAMESPACE__ . '\\norm_header', $header);
 
@@ -98,7 +100,7 @@ final class App
             $fileHasCity = in_array('city', $header, true);
             if ($fileHasCity) $hasAnyCity = true;
 
-            while (($row = fgetcsv($fh)) !== false){
+            while (($row = fgetcsv($fh, 0, ',', '"', '\\')) !== false){
                 if (count($row) < count($header)) continue;
                 $country = trim($row[$idx['country']] ?? '');
                 $state   = trim($row[$idx['state']]   ?? '');
