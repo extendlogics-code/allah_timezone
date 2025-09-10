@@ -252,7 +252,7 @@ final class App
   }
 }
   .card{ padding:20px 16px 22px; display:flex; flex-direction:column; align-items:center; gap:10px; }
-  .title{display:none; margin:0 0 4px 0; font-size:16px; color:#dbeafe; text-align:center}
+  .title{margin:0 0 4px 0; font-size:16px; color:#dbeafe; text-align:center}
   .subtitle{display:block; font-weight:400; font-size:12px; color:#9ca3af; margin-top:2px}
 
   /* Canvas gets set by JS for responsive size */
@@ -339,10 +339,21 @@ final class App
       <?php endif; ?>
     </h1>
     
-    <div id="upcomingBox" class="upcoming">
-      <div class="up-name" id="upName">Next</div>
-      <div class="up-time" id="upTime">--:--</div>
-      <div class="up-in" id="upIn">in --:--:--</div>
+    <div class="date-line" id="dateLine">
+  <span id="gregText"><?= h($gregServer) ?></span><br>
+  <span id="hijriText"><?= h($hijriServer) ?></span>
+</div>
+
+    <!-- Put the clock canvas back (it was commented out before) -->
+    <canvas id="clockCanvas" width="610" height="610" aria-label="Analog Clock"></canvas>
+
+    <div class="time-readout" id="nowText">--:--:--</div>
+    <div class="status" id="statusText">
+      <?php if (!empty($SCHEDULE_TIMES)): ?>
+        Waiting for next prayer time to autoplay (fullscreen)…
+      <?php else: ?>
+        Couldn’t find times for your selection in the CSVs.
+      <?php endif; ?>
     </div>
 
     <div id="videoWrap">
@@ -391,10 +402,6 @@ final class App
   const overlayFS       = document.getElementById('overlayFS');
   const goFSBtn         = document.getElementById('goFSBtn');
   const localVid        = document.getElementById('localVid');
-  const upBox = document.getElementById('upcomingBox');
-  const upName = document.getElementById('upName');
-  const upTime = document.getElementById('upTime');
-  const upIn = document.getElementById('upIn');
 
   let player=null, ytState=-1, restoreTimeout=null;
 
@@ -699,7 +706,7 @@ final class App
     overlayFS.style.display='none';
     if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(()=>{});
     document.body.classList.remove('fullwindow');
-    videoWrap.style.display='none'; if (upBox) upBox.style.display='flex';
+    videoWrap.style.display='none'; clockCanvas.style.display='block'; statusText.textContent='Clock is visible.';
     // restore YouTube container visibility (for a future fallback)
     document.getElementById('ytContainer').style.display='block';
   }
@@ -707,11 +714,9 @@ final class App
   async function playNow(label){
     // Fill entire window without using Fullscreen API (avoids gesture requirement)
     document.body.classList.add('fullwindow');
-    if (upBox) upBox.style.display='none';
+    clockCanvas.style.display='none';
     videoWrap.style.display='block';
-
-    // Best-effort: also try browser Fullscreen API; ignore errors if blocked
-    try { await forceFullscreen(videoWrap); } catch(e) {}
+    statusText.textContent = (label?label+' · ':'') + 'Playing video (full window). Will return when it ends (or after <?= (int)$CONFIG['fallback_minutes'] ?> minutes).';
 
     if (HAS_LOCAL && LOCAL_URL){
       await playLocal(label);
@@ -760,25 +765,17 @@ final class App
     for (let i=0;i<list.length;i++){ if (list[i]>now) return {date:list[i], idx:i}; }
     const t=todayAt(times[0]); t.setDate(t.getDate()+1); return {date:t, idx:0};
   }
-  function fmtDur(ms){ ms=Math.max(0,ms|0); const s=Math.floor(ms/1000); const h=Math.floor(s/3600); const m=Math.floor((s%3600)/60); const ss=s%60; const pad=n=>String(n).padStart(2,'0'); return `${pad(h)}:${pad(m)}:${pad(ss)}`; }
   function scheduleAt(ts,label){
     if (window.__nextTO) clearTimeout(window.__nextTO);
     const ms = ts - Date.now();
     window.__nextTO = setTimeout(()=>{ playNow(label); }, ms);
   }
   function scheduleNextFromNow(){
-    if (!SCHEDULE_TIMES || SCHEDULE_TIMES.length===0){ if (upName) upName.textContent='No schedule'; if (upTime) upTime.textContent='--:--'; if (upIn) upIn.textContent=''; return; }
+    if (!SCHEDULE_TIMES || SCHEDULE_TIMES.length===0){ statusText.textContent='No schedule for this selection.'; return; }
     const next = nextFrom(SCHEDULE_TIMES);
-    const labelName = (SCHEDULE_NAMES && SCHEDULE_NAMES[next.idx]) ? SCHEDULE_NAMES[next.idx] : 'Next';
-    const labelTime = SCHEDULE_TIMES[next.idx];
-    if (upName) upName.textContent = labelName;
-    if (upTime) upTime.textContent = labelTime;
-    const tick = ()=>{ if (upIn) upIn.textContent = 'in ' + fmtDur(next.date - Date.now()); };
-    tick();
-    if (window.__upInt) clearInterval(window.__upInt);
-    window.__upInt = setInterval(tick, 1000);
-    const label = `(${labelName} • ${labelTime})`;
+    const label = SCHEDULE_NAMES[next.idx] ? `(${SCHEDULE_NAMES[next.idx]} • ${SCHEDULE_TIMES[next.idx]})` : SCHEDULE_TIMES[next.idx];
     scheduleAt(next.date, label);
+    statusText.textContent='Timer ready. Will autoplay at the next scheduled time.';
   }
   
   // --- Country → Timezone mapping for date lines (extend as needed)
