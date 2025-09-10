@@ -288,6 +288,12 @@ final class App
     .title{font-size:14px}
     .subtitle{font-size:11px}
   }
+
+  /* Full-window autoplay mode (no browser fullscreen API) */
+  body.fullwindow .topbar{display:none}
+  body.fullwindow .stage{padding-top:0; align-items:stretch}
+  body.fullwindow #videoWrap{display:block; position:fixed; inset:0; width:100vw; height:100vh; border:none; border-radius:0}
+  body.fullwindow #clockCanvas{display:none}
 </style>
 </head>
 <body>
@@ -378,6 +384,7 @@ final class App
   const YT_ID   = "<?= $YT_ID_SAFE ?>";
   const YT_HOST = "<?= h($CONFIG['yt_host']) ?>";
   const START_WITH_SOUND = true;
+  const STRICT_AUTOPLAY = true; // Fill window and attempt playback without prompts
 
   // From PHP
   const SCHEDULE_TIMES = <?= json_encode($SCHEDULE_TIMES) ?>;
@@ -698,18 +705,18 @@ final class App
     overlayBlocked.style.display='none';
     overlayFS.style.display='none';
     if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+    document.body.classList.remove('fullwindow');
     videoWrap.style.display='none'; clockCanvas.style.display='block'; statusText.textContent='Clock is visible.';
     // restore YouTube container visibility (for a future fallback)
     document.getElementById('ytContainer').style.display='block';
   }
 
   async function playNow(label){
+    // Fill entire window without using Fullscreen API (avoids gesture requirement)
+    document.body.classList.add('fullwindow');
     clockCanvas.style.display='none';
     videoWrap.style.display='block';
-    statusText.textContent = (label?label+' · ':'') + 'Playing video in fullscreen. Will return when it ends (or after <?= (int)$CONFIG['fallback_minutes'] ?> minutes).';
-
-    // Always go fullscreen (Chrome/Firefox/etc.)
-    await forceFullscreen(videoWrap);
+    statusText.textContent = (label?label+' · ':'') + 'Playing video (full window). Will return when it ends (or after <?= (int)$CONFIG['fallback_minutes'] ?> minutes).';
 
     if (HAS_LOCAL && LOCAL_URL){
       await playLocal(label);
@@ -718,7 +725,7 @@ final class App
       localVid.style.display='none';
       document.getElementById('ytContainer').style.display='block';
       if (!player) createPlayer();
-      setTimeout(()=>{ if (ytState !== YT.PlayerState.PLAYING) overlayBlocked.style.display='flex'; }, 1000);
+      if (!STRICT_AUTOPLAY) setTimeout(()=>{ if (ytState !== YT.PlayerState.PLAYING) overlayBlocked.style.display='flex'; }, 1000);
     }
 
     if (restoreTimeout) clearTimeout(restoreTimeout);
@@ -745,8 +752,10 @@ final class App
   });
 
   goFSBtn.addEventListener('click', async ()=>{
-    await forceFullscreen(videoWrap);
-    overlayFS.style.display='none';
+    if (!STRICT_AUTOPLAY){
+      await forceFullscreen(videoWrap);
+    }
+    overlayFS.style.display = STRICT_AUTOPLAY ? 'none' : 'none';
   });
 
   // Scheduler

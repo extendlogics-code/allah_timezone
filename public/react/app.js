@@ -113,12 +113,12 @@ function App(){
     try{ playerRef.current && playerRef.current.stopVideo && playerRef.current.stopVideo(); }catch(e){}
     setPlaying(false); setBlocked(false); setShowUnmute(false); setShowFS(false);
     if (document.fullscreenElement && document.exitFullscreen){ try{ document.exitFullscreen(); }catch(_){} }
+    document.body.classList.remove('fullwindow');
   }
   async function playNow(label){
     setPlaying(true);
-    setStatus(`${label?label+' · ':''}Playing video fullscreen.`);
-    try{ const el=document.getElementById('videoWrap'); if (el.requestFullscreen) await el.requestFullscreen(); else setShowFS(true); }
-    catch(e){ setShowFS(true); }
+    document.body.classList.add('fullwindow');
+    setStatus(`${label?label+' · ':''}Playing video (full window).`);
     try{ await playLocal(); }
     catch(e){ ensureYT(); }
     setTimeout(()=>{ cleanup(); scheduleNext(); }, 3*60*1000); // fallback

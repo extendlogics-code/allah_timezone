@@ -30,6 +30,11 @@
       #overlayBlocked{inset:0; background:rgba(0,0,0,.55); backdrop-filter:blur(2px)}
       #overlayFS{right:12px; bottom:12px}
       #unmuteBtn{position:absolute; z-index:3; display:none; top:12px; right:12px}
+      /* Full-window autoplay mode */
+      body.fullwindow .topbar{display:none}
+      body.fullwindow .stage{padding-top:0; align-items:stretch}
+      body.fullwindow #videoWrap{display:block; position:fixed; inset:0; width:auto; height:auto; border:none; border-radius:0}
+      body.fullwindow #clockCanvas{display:none}
     </style>
     <script src="https://www.youtube.com/iframe_api"></script>
     <script type="module" src="https://esm.sh/react@18.3.1"></script>
