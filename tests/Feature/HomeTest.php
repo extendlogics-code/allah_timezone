@@ -2,7 +2,6 @@
 declare(strict_types=1);
 
 use App\App;
-use PHPUnit\Framework\TestCase;
 
 /**
  * @method void assertSame(mixed $expected, mixed $actual, string $message = '')
