@@ -593,6 +593,25 @@ final class App
     ctx.restore();
   }
 
+  // Timezone helpers (show and schedule by selected country)
+  const ACTIVE_TZ = tzForCountry(CURRENT_COUNTRY || '');
+  function tzParts(tz){
+    const parts = new Intl.DateTimeFormat('en', {
+      timeZone: tz,
+      hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false,
+      year:'numeric', month:'2-digit', day:'2-digit'
+    }).formatToParts(new Date());
+    const map = Object.fromEntries(parts.map(p=>[p.type,p.value]));
+    return { y:+map.year, M:+map.month, d:+map.day, h:+map.hour, m:+map.minute, s:+map.second };
+  }
+  // Compute offset so that a local Date with hh:mm represents the same wall time in ACTIVE_TZ
+  const TZ_OFFSET_MS = (()=>{
+    const now = new Date();
+    const p = tzParts(ACTIVE_TZ);
+    const localLikeTz = new Date(`${p.y}-${p.M.toString().padStart(2,'0')}-${p.d.toString().padStart(2,'0')}T${p.h.toString().padStart(2,'0')}:${p.m.toString().padStart(2,'0')}:${p.s.toString().padStart(2,'0')}`);
+    return localLikeTz.getTime() - now.getTime();
+  })();
+
   // Radial countdown ring for next prayer (progress from previous prayer)
   function drawNextProgress(ctx, R, prevDate, nextDate){
     if (!prevDate || !nextDate) return;
@@ -613,7 +632,7 @@ final class App
   }
 
   function drawClock(){
-    const now=new Date(), s=now.getSeconds(), m=now.getMinutes(), h=now.getHours()%12;
+    const p = tzParts(ACTIVE_TZ); const s=+p.s, m=+p.m, h=(+p.h)%12;
     const ctx=clockCanvas.getContext('2d');
     const W=clockCanvas.width,H=clockCanvas.height,R=Math.min(W,H)/2-24;
     ctx.clearRect(0,0,W,H); ctx.save(); ctx.translate(W/2,H/2);
@@ -710,9 +729,9 @@ final class App
 
     ctx.restore();
 
-    // digital readout pinned to Asia/Kolkata
-    nowText.textContent = new Intl.DateTimeFormat('en-IN', {
-      hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false, timeZone:'Asia/Kolkata'
+    // digital readout pinned to selected country timezone
+    nowText.textContent = new Intl.DateTimeFormat('en', {
+      hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false, timeZone: ACTIVE_TZ
     }).format(new Date());
   }
 
@@ -868,9 +887,10 @@ final class App
   // Scheduler
   function todayAt(hhmm){ const [hh,mm]=hhmm.split(':').map(Number); const d=new Date(); d.setHours(hh,mm,0,0); return d; }
   function nextFrom(times){
-    const now=new Date(); const list=times.map(t=>todayAt(t));
+    const now=new Date();
+    const list=times.map(t=> new Date(todayAt(t).getTime() + TZ_OFFSET_MS));
     for (let i=0;i<list.length;i++){ if (list[i]>now) return {date:list[i], idx:i}; }
-    const t=todayAt(times[0]); t.setDate(t.getDate()+1); return {date:t, idx:0};
+    const t=new Date(todayAt(times[0]).getTime() + TZ_OFFSET_MS); t.setDate(t.getDate()+1); return {date:t, idx:0};
   }
   function scheduleAt(ts,label){
     if (window.__nextTO) clearTimeout(window.__nextTO);
@@ -948,6 +968,48 @@ setInterval(renderDates, 60 * 1000);
   drawClock();
   setInterval(drawClock,500);
   scheduleNextFromNow();
+
+  // Tooltip on hover over prayer markers (show name + time)
+  (function enableMarkerTooltip(){
+    const tip = document.createElement('div');
+    tip.style.position='fixed'; tip.style.display='none'; tip.style.pointerEvents='none';
+    tip.style.background='rgba(2,6,23,0.9)'; tip.style.color='#e5e7eb'; tip.style.border='1px solid rgba(148,163,184,.35)'; tip.style.borderRadius='8px'; tip.style.padding='6px 8px'; tip.style.fontSize='12px'; tip.style.zIndex='20';
+    document.body.appendChild(tip);
+    let lastMove=0;
+    clockCanvas.addEventListener('mousemove', (e)=>{
+      // Recompute current pearl positions similar to drawOrbitingPrayerMarkers
+      if (!Array.isArray(SCHEDULE_TIMES) || SCHEDULE_TIMES.length===0){ tip.style.display='none'; return; }
+      const rect = clockCanvas.getBoundingClientRect();
+      const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+      const W = clockCanvas.width, H = clockCanvas.height; const R = Math.min(W,H)/2-24;
+      const t = performance.now();
+      const xs=[];
+      for (let i=0;i<SCHEDULE_TIMES.length;i++){
+        const [hh,mm] = SCHEDULE_TIMES[i].split(':').map(Number);
+        const a = (Math.PI*2)*((hh%12 + mm/60)/12) - Math.PI/2 + Math.sin(t*0.0002 + i)*0.03;
+        const rr = R + 10*Math.sin(t*0.001 + i) + 6;
+        const x = cx + rr*Math.cos(a);
+        const y = cy + rr*Math.sin(a);
+        xs.push({x,y});
+      }
+      const mx = e.clientX, my = e.clientY;
+      let hit = -1;
+      for (let i=0;i<xs.length;i++){
+        if (Math.hypot(mx - xs[i].x, my - xs[i].y) < 12){ hit = i; break; }
+      }
+      if (hit>=0){
+        const name = (SCHEDULE_NAMES && SCHEDULE_NAMES[hit]) ? SCHEDULE_NAMES[hit] : 'Prayer';
+        const time = SCHEDULE_TIMES[hit];
+        tip.innerHTML = `<div style="font-weight:600">${name}</div><div>${time}</div>`;
+        tip.style.left = (mx + 12) + 'px';
+        tip.style.top  = (my + 12) + 'px';
+        tip.style.display = 'block';
+      } else {
+        tip.style.display = 'none';
+      }
+    });
+    clockCanvas.addEventListener('mouseleave', ()=>{ tip.style.display='none'; });
+  })();
 })();
 </script>
 </body>
