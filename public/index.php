@@ -34,6 +34,12 @@ if ($uri === '/media/azan.mp4') {
     return;
 }
 
+// Basic API route for React without router.php (Apache/.htaccess)
+if (strpos($uri, '/api/times') === 0) {
+    require __DIR__ . '/api.php';
+    return;
+}
+
 require __DIR__ . '/../bootstrap/app.php';
 
 use App\App;
