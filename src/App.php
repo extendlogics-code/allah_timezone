@@ -425,7 +425,7 @@ final class App
   const clockPattern = new Image(); clockPattern.src = IMG.clock;
   const allahImg     = new Image(); allahImg.src     = IMG.allah;
 
-  // ===== Clock theme helpers (unchanged) =====
+  // ===== Clock theme + helpers (enhanced) =====
   const THEME = {
     ring:   'rgba(56,189,248,.35)',
     tick5:  'rgba(229,231,235,.95)',
@@ -442,59 +442,119 @@ final class App
   };
   let __secTrail = [];
   function arcPoint(r, a){ return [r*Math.cos(a), r*Math.sin(a)]; }
-  function drawCrescentHalo(ctx, R, t){
-    const haloGrad = ctx.createRadialGradient(0,0,R*0.6, 0,0,R*1.08);
-    haloGrad.addColorStop(0, THEME.halo2);
-    haloGrad.addColorStop(1, THEME.halo1);
-    ctx.fillStyle = haloGrad;
-    ctx.beginPath(); ctx.arc(0,0,R*1.08,0,Math.PI*2); ctx.fill();
-    const spin = (t/1000) * 0.25;
-    const baseA = -Math.PI/2 + spin;
-    ctx.save(); ctx.rotate(baseA);
-    ctx.beginPath();
-    ctx.strokeStyle = THEME.cres;
-    ctx.lineWidth = 6;
-    ctx.arc(0,0,R+8, -0.9, 0.9);
-    ctx.stroke();
+  // Pseudo-noise via multi-sine blend for organic motion
+  function pnoise(a, t, seed){
+    return Math.sin(a*3 + t*0.0007 + seed)*0.5 +
+           Math.sin(a*5 - t*0.0003 + seed*2)*0.3 +
+           Math.sin(a*11 + t*0.00013 + seed*3)*0.2;
+  }
+
+  // Aurora ring: animated organic glow ribbon around the dial
+  function drawAurora(ctx, R, t){
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let k=0;k<2;k++){
+      const base = R+6 + k*6;
+      ctx.beginPath();
+      for (let i=0;i<=360;i+=2){
+        const a = i*Math.PI/180;
+        const off = pnoise(a, t + k*10000, 0.7+k)*8;
+        const rr = base + off;
+        const x = rr*Math.cos(a), y=rr*Math.sin(a);
+        if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      const g = ctx.createLinearGradient(-R,0,R,0);
+      g.addColorStop(0,'rgba(56,189,248,0.12)');
+      g.addColorStop(0.5,'rgba(34,197,94,0.08)');
+      g.addColorStop(1,'rgba(99,102,241,0.12)');
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
     ctx.restore();
   }
-  function drawPrayerMarkers(ctx, R, ANG_OFF){
+
+  // Rosette in center using rotated polygons
+  function drawRosette(ctx, R){
+    ctx.save();
+    const layers = 5;
+    for (let i=0;i<layers;i++){
+      const r = R*(0.1 + i*0.06);
+      ctx.rotate(Math.PI/12);
+      ctx.beginPath();
+      for (let j=0;j<8;j++){
+        const a = j*(Math.PI*2/8);
+        const x = r*Math.cos(a), y=r*Math.sin(a);
+        if (j===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(203,213,225,'+(0.18 - i*0.02)+')';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Minute beads around rim
+  function drawBeads(ctx, R){
+    ctx.save();
+    for (let i=0;i<60;i++){
+      const a = i*(Math.PI*2/60) - Math.PI/2;
+      const rr = R - (i%5===0? 14:8);
+      const [x,y] = arcPoint(R, a);
+      const [ix,iy] = arcPoint(rr, a);
+      const g = ctx.createRadialGradient(ix,iy,0, ix,iy, i%5===0? 5:3);
+      g.addColorStop(0, i%5===0? 'rgba(99,102,241,0.95)':'rgba(148,163,184,0.85)');
+      g.addColorStop(1, 'rgba(2,6,23,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(ix,iy, i%5===0? 4.5:3, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Orbiting prayer markers (pearls that gently breathe)
+  function drawOrbitingPrayerMarkers(ctx, R, ANG_OFF, t){
     if (!Array.isArray(SCHEDULE_TIMES) || SCHEDULE_TIMES.length===0) return;
     ctx.save();
-    ctx.font = '600 12px system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const rim = R + 2, textR = R - 16;
-    SCHEDULE_TIMES.forEach((hhmm, i)=>{
+    for (let i=0;i<SCHEDULE_TIMES.length;i++){
+      const hhmm = SCHEDULE_TIMES[i];
       const [hh,mm] = hhmm.split(':').map(Number);
-      const a = (Math.PI*2)*((hh%12 + mm/60)/12) + ANG_OFF;
-      const [x,y] = arcPoint(rim, a);
-      // diamond
-      ctx.save(); ctx.translate(x,y); ctx.rotate(a);
-      ctx.fillStyle = THEME.tick5; ctx.globalAlpha = 0.95;
-      ctx.beginPath(); ctx.moveTo(0,-4); ctx.lineTo(4,0); ctx.lineTo(0,4); ctx.lineTo(-4,0); ctx.closePath(); ctx.fill();
-      ctx.restore();
-      // label pill
-      const label = (SCHEDULE_NAMES && SCHEDULE_NAMES[i]) ? `${SCHEDULE_NAMES[i]} ${hhmm}` : hhmm;
-      const tw = ctx.measureText(label).width;
-      const [tx,ty] = arcPoint(textR, a);
-      ctx.save(); ctx.translate(tx,ty); ctx.rotate(a);
-      ctx.fillStyle = THEME.labelBg; ctx.globalAlpha = 0.9;
-      const padX=8, h=18, w=tw+padX*2, r=9;
-      ctx.beginPath();
-      ctx.moveTo(-w/2+r, -h/2);
-      ctx.lineTo(w/2-r, -h/2);
-      ctx.quadraticCurveTo(w/2, -h/2, w/2, -h/2+r);
-      ctx.lineTo(w/2, h/2-r);
-      ctx.quadraticCurveTo(w/2, h/2, w/2-r, h/2);
-      ctx.lineTo(-w/2+r, h/2);
-      ctx.quadraticCurveTo(-w/2, h/2, -w/2, h/2-r);
-      ctx.lineTo(-w/2, -h/2+r);
-      ctx.quadraticCurveTo(-w/2, -h/2, -w/2+r, -h/2);
-      ctx.closePath(); ctx.fill();
-      ctx.fillStyle = THEME.label; ctx.globalAlpha = 1; ctx.fillText(label, 0, 1);
-      ctx.restore();
-    });
+      const a = (Math.PI*2)*((hh%12 + mm/60)/12) + ANG_OFF + Math.sin(t*0.0002 + i)*0.03;
+      const breathe = 1 + 0.06*Math.sin(t*0.003 + i*1.7);
+      const rr = R + 10*Math.sin(t*0.001 + i) + 6;
+      const [x,y] = arcPoint(rr, a);
+      const pearl = ctx.createRadialGradient(x,y,0, x,y, 10*breathe);
+      pearl.addColorStop(0,'rgba(56,189,248,0.95)');
+      pearl.addColorStop(1,'rgba(56,189,248,0)');
+      ctx.fillStyle = pearl;
+      ctx.beginPath(); ctx.arc(x,y, 6.5*breathe, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+  // Daylight arc between Fajr and Maghrib (approximate daylight band)
+  function drawDayArc(ctx, R, ANG_OFF){
+    if (!SCHEDULE_TIMES || !SCHEDULE_NAMES) return;
+    const fi = SCHEDULE_NAMES.indexOf('Fajr');
+    const mi = SCHEDULE_NAMES.indexOf('Maghrib');
+    if (fi===-1 || mi===-1) return;
+    const [fh,fm] = SCHEDULE_TIMES[fi].split(':').map(Number);
+    const [mh,mm] = SCHEDULE_TIMES[mi].split(':').map(Number);
+    const fa = (Math.PI*2)*((fh%12 + fm/60)/12) + ANG_OFF;
+    const ma = (Math.PI*2)*((mh%12 + mm/60)/12) + ANG_OFF;
+    ctx.save();
+    ctx.beginPath();
+    const g = ctx.createRadialGradient(0,0,R*0.4, 0,0,R+12);
+    g.addColorStop(0,'rgba(250,204,21,0)');
+    g.addColorStop(1,'rgba(250,204,21,0.18)');
+    ctx.strokeStyle = g;
+    ctx.lineWidth = 18;
+    // handle wrapping across midnight
+    let start = fa, end = ma;
+    if (ma < fa) end += Math.PI*2;
+    ctx.arc(0,0,R-6, start, end, false);
+    ctx.stroke();
     ctx.restore();
   }
   function drawSecTail(ctx, tipX, tipY){
@@ -545,22 +605,16 @@ final class App
     }
     ctx.restore();
 
-    // halo + outer ring
-    drawCrescentHalo(ctx, R, performance.now());
+    // Aurora halo + daylight arc + outer ring + rosette
+    const t = performance.now();
+    drawAurora(ctx, R, t);
+    drawDayArc(ctx, R, ANG_OFF);
     ctx.beginPath(); ctx.arc(0,0,R+6,0,Math.PI*2);
     ctx.strokeStyle=THEME.ring; ctx.lineWidth=10; ctx.stroke();
+    drawRosette(ctx, R);
 
     // ticks
-    for (let i=0;i<60;i++){
-      const a = (Math.PI*2)*(i/60) + ANG_OFF;
-      const inner = R - (i%5===0 ? 22 : 12);
-      ctx.beginPath();
-      ctx.moveTo(R*Math.cos(a), R*Math.sin(a));
-      ctx.lineTo(inner*Math.cos(a), inner*Math.sin(a));
-      ctx.strokeStyle = i%5===0 ? THEME.tick5 : THEME.tick1;
-      ctx.lineWidth   = i%5===0 ? 3 : 1.6;
-      ctx.stroke();
-    }
+    drawBeads(ctx, R);
 
     // numerals
     ctx.fillStyle = THEME.text;
@@ -571,8 +625,8 @@ final class App
       ctx.fillText(String(n), r*Math.cos(a), r*Math.sin(a));
     });
 
-    // prayer markers
-    drawPrayerMarkers(ctx, R, ANG_OFF);
+    // orbiting prayer markers
+    drawOrbitingPrayerMarkers(ctx, R, ANG_OFF, t);
 
     // hand angles
     const sa=(Math.PI*2)*(s/60)+ANG_OFF;
