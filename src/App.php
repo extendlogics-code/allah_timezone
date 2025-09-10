@@ -260,6 +260,10 @@ final class App
 
   .time-readout{font-variant-numeric:tabular-nums;font-size:14px;color:var(--muted); text-align:center}
   .status{font-size:13px; color:#c7d2fe; text-align:center}
+  .next-info{ display:flex; align-items:center; justify-content:center; gap:10px; margin:8px 0 12px; }
+  .next-name{ color:#dbeafe; font-weight:600 }
+  .next-time{ color:#e5e7eb; font-variant-numeric:tabular-nums }
+  .next-rem{ color:#94a3b8; font-variant-numeric:tabular-nums }
 
   #videoWrap{ display:none; position:relative; width:min(88vmin, 92vw); aspect-ratio:16/9; background:#000; border-radius:16px; border:1px solid rgba(56,189,248,.25); overflow:hidden; }
   #ytBox{position:relative; width:100%; height:100%}
@@ -344,7 +348,13 @@ final class App
   <span id="hijriText"><?= h($hijriServer) ?></span>
 </div>
 
-    <!-- Put the clock canvas back (it was commented out before) -->
+    <div class="next-info" id="nextInfo" aria-live="polite">
+      <span>Next:</span>
+      <span class="next-name" id="nxName">—</span>
+      <span class="next-time" id="nxTime">--:--</span>
+      <span class="next-rem" id="nxRem">in --:--:--</span>
+    </div>
+    <!-- Analog Clock -->
     <canvas id="clockCanvas" width="610" height="610" aria-label="Analog Clock"></canvas>
 
     <div class="time-readout" id="nowText">--:--:--</div>
@@ -522,6 +532,7 @@ final class App
       const hhmm = SCHEDULE_TIMES[i];
       const [hh,mm] = hhmm.split(':').map(Number);
       const a = (Math.PI*2)*((hh%12 + mm/60)/12) + ANG_OFF + Math.sin(t*0.0002 + i)*0.03;
+      // highlight next marker later by over-drawing
       const breathe = 1 + 0.06*Math.sin(t*0.003 + i*1.7);
       const rr = R + 10*Math.sin(t*0.001 + i) + 6;
       const [x,y] = arcPoint(rr, a);
@@ -582,6 +593,25 @@ final class App
     ctx.restore();
   }
 
+  // Radial countdown ring for next prayer (progress from previous prayer)
+  function drawNextProgress(ctx, R, prevDate, nextDate){
+    if (!prevDate || !nextDate) return;
+    const now = Date.now();
+    const a = Math.max(0, Math.min(1, (now - prevDate.getTime()) / (nextDate.getTime() - prevDate.getTime())));
+    const base = R - 26;
+    // track
+    ctx.beginPath(); ctx.arc(0,0,base,0,Math.PI*2);
+    ctx.strokeStyle = 'rgba(148,163,184,0.18)'; ctx.lineWidth = 12; ctx.stroke();
+    // progress
+    const grad = ctx.createConicGradient(-Math.PI/2, 0, 0);
+    grad.addColorStop(0, 'rgba(56,189,248,0.85)');
+    grad.addColorStop(0.5, 'rgba(34,197,94,0.85)');
+    grad.addColorStop(1, 'rgba(99,102,241,0.85)');
+    ctx.beginPath();
+    ctx.arc(0,0,base, -Math.PI/2, -Math.PI/2 + a*Math.PI*2);
+    ctx.strokeStyle = grad; ctx.lineWidth = 12; ctx.lineCap='round'; ctx.stroke();
+  }
+
   function drawClock(){
     const now=new Date(), s=now.getSeconds(), m=now.getMinutes(), h=now.getHours()%12;
     const ctx=clockCanvas.getContext('2d');
@@ -627,6 +657,29 @@ final class App
 
     // orbiting prayer markers
     drawOrbitingPrayerMarkers(ctx, R, ANG_OFF, t);
+    // highlight the next prayer marker and draw radial progress
+    if (Array.isArray(SCHEDULE_TIMES) && SCHEDULE_TIMES.length){
+      const nextObj = nextFrom(SCHEDULE_TIMES);
+      const idx = nextObj.idx;
+      const hhmm = SCHEDULE_TIMES[idx];
+      const [hh,mm] = hhmm.split(':').map(Number);
+      const a = (Math.PI*2)*((hh%12 + mm/60)/12) + ANG_OFF + Math.sin(t*0.0002 + idx)*0.03;
+      const rr = R + 10*Math.sin(t*0.001 + idx) + 9;
+      const [x,y] = [rr*Math.cos(a), rr*Math.sin(a)];
+      const g = ctx.createRadialGradient(x,y,0,x,y,12);
+      g.addColorStop(0,'rgba(250,204,21,0.95)');
+      g.addColorStop(1,'rgba(250,204,21,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(x,y,8.5,0,Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x,y,11,0,Math.PI*2); ctx.strokeStyle='rgba(250,204,21,0.85)'; ctx.lineWidth=2; ctx.stroke();
+      // radial progress ring from previous to next
+      // compute prev date as the previous schedule time (yesterday if wraps)
+      const prevIdx = (idx - 1 + SCHEDULE_TIMES.length) % SCHEDULE_TIMES.length;
+      const prev = todayAt(SCHEDULE_TIMES[prevIdx]);
+      const nextD = nextObj.date;
+      if (prev > nextD){ prev.setDate(prev.getDate()-1); }
+      drawNextProgress(ctx, R, prev, nextD);
+    }
 
     // hand angles
     const sa=(Math.PI*2)*(s/60)+ANG_OFF;
@@ -824,12 +877,28 @@ final class App
     const ms = ts - Date.now();
     window.__nextTO = setTimeout(()=>{ playNow(label); }, ms);
   }
+  function fmtRemain(ms){ ms=Math.max(0,ms|0); const s=Math.floor(ms/1000); const h=Math.floor(s/3600); const m=Math.floor((s%3600)/60); const ss=s%60; const pad=n=>String(n).padStart(2,'0'); return `${pad(h)}:${pad(m)}:${pad(ss)}`; }
+  function updateNextInfo(){
+    const box = document.getElementById('nextInfo'); if (!box) return;
+    if (!SCHEDULE_TIMES || SCHEDULE_TIMES.length===0){ box.style.display='none'; return; }
+    const next = nextFrom(SCHEDULE_TIMES);
+    const name = (SCHEDULE_NAMES && SCHEDULE_NAMES[next.idx]) ? SCHEDULE_NAMES[next.idx] : 'Next';
+    const time = SCHEDULE_TIMES[next.idx];
+    const rem = fmtRemain(next.date - Date.now());
+    const nxName = document.getElementById('nxName'); if (nxName) nxName.textContent = name;
+    const nxTime = document.getElementById('nxTime'); if (nxTime) nxTime.textContent = time;
+    const nxRem  = document.getElementById('nxRem');  if (nxRem)  nxRem.textContent  = 'in ' + rem;
+    box.style.display='flex';
+  }
   function scheduleNextFromNow(){
     if (!SCHEDULE_TIMES || SCHEDULE_TIMES.length===0){ statusText.textContent='No schedule for this selection.'; return; }
     const next = nextFrom(SCHEDULE_TIMES);
     const label = SCHEDULE_NAMES[next.idx] ? `(${SCHEDULE_NAMES[next.idx]} • ${SCHEDULE_TIMES[next.idx]})` : SCHEDULE_TIMES[next.idx];
     scheduleAt(next.date, label);
     statusText.textContent='Timer ready. Will autoplay at the next scheduled time.';
+    if (window.__nxInt) clearInterval(window.__nxInt);
+    updateNextInfo();
+    window.__nxInt = setInterval(updateNextInfo, 1000);
   }
   
   // --- Country → Timezone mapping for date lines (extend as needed)
