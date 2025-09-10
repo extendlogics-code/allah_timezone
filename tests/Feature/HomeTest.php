@@ -1,9 +1,13 @@
 <?php
 declare(strict_types=1);
 
-use PHPUnit\Framework\TestCase;
 use App\App;
+use PHPUnit\Framework\TestCase;
 
+/**
+ * @method void assertSame(mixed $expected, mixed $actual, string $message = '')
+ * @method void assertStringContainsString(string $needle, string $haystack, string $message = '')
+ */
 final class HomeTest extends TestCase
 {
     public function testHandleOutputsPage(): void
