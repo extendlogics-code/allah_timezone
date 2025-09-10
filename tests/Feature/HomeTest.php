@@ -14,7 +14,9 @@ final class HomeTest extends TestCase
     {
         $app = new App();
         $res = $app->handle([]);
+        // @intelephense-ignore
         $this->assertSame(200, $res['status']);
+        // @intelephense-ignore
         $this->assertStringContainsString('Allah Timezone', $res['body']);
     }
 }
